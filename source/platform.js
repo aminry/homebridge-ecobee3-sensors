@@ -5,6 +5,7 @@ var UUIDGen, Accessory, EcobeeSensor, EcobeeEquipment;
 var Querystring = require('querystring');
 var Https = require('https');
 
+const equipmentPrefix = "Equipment ";
 const Verbosity = Object.freeze({
     None: 0,
     Error: 1,
@@ -98,6 +99,7 @@ function EcobeePlatform(log, config, homebridgeAPI) {
 
   this.ecobeeAccessories = {};
   this.homebridgeAccessories = {};
+  this.homebridgeEquipmentAccessories = {};
 
   this.homebridgeAPI = homebridgeAPI;
   this.homebridgeAPI.on('didFinishLaunching', this.didFinishLaunching.bind(this));
@@ -105,7 +107,7 @@ function EcobeePlatform(log, config, homebridgeAPI) {
 
 
 EcobeePlatform.prototype.configureAccessory = function (homebridgeAccessory) {
-  this.log.debug("Configuring chached Homebridge accessory...");
+  this.log.debug("Configuring cached Homebridge accessory...");
   this.log.debug(homebridgeAccessory);
   var sensorCode = homebridgeAccessory.context['code'];
   homebridgeAccessory.reachable = false;
@@ -114,7 +116,11 @@ EcobeePlatform.prototype.configureAccessory = function (homebridgeAccessory) {
     this.refreshToken = homebridgeAccessory.context['refresh_token']; // This is a bit hackish...
   }
   this.log.info("Cached | " + homebridgeAccessory.displayName + " | " + sensorCode);
-  this.homebridgeAccessories[sensorCode] = homebridgeAccessory;
+  if (sensorCode.startsWith(equipmentPrefix)) {
+    this.homebridgeEquipmentAccessories[sensorCode] = homebridgeAccessory;
+  } else {
+    this.homebridgeAccessories[sensorCode] = homebridgeAccessory;
+  }
 };
 
 
@@ -351,11 +357,11 @@ EcobeePlatform.prototype.equipments = function (reply) {
     if (thermostatConfig.equipmentStatus) {
       for (var equipmentName of thermostatConfig.equipmentStatus.split(',')) {
         if (equipmentName === '') continue;
-        equipmentName = "Ecobee " + equipmentName.trim();
+        equipmentName = equipmentPrefix + equipmentName.trim();
         var equipment = this.ecobeeAccessories[equipmentName];
       
         if (!equipment) {
-          var homebridgeAccessory = this.homebridgeAccessories[equipmentName];
+          var homebridgeAccessory = this.homebridgeEquipmentAccessories[equipmentName];
           if (!homebridgeAccessory) {
             this.log.info("Create | " + equipmentName);
             homebridgeAccessory = new Accessory(equipmentName, UUIDGen.generate(`equipment ${equipmentName}`));
@@ -363,7 +369,7 @@ EcobeePlatform.prototype.equipments = function (reply) {
             this.homebridgeAPI.registerPlatformAccessories("homebridge-ecobee3-sensors", "Ecobee 3 Sensors", [homebridgeAccessory]);
           } else {
             this.log.info("Cached | " + equipmentName);
-            delete this.homebridgeAccessories[equipmentName];
+            delete this.homebridgeEquipmentAccessories[equipmentName];
           }
           equipment = new EcobeeEquipment(this.log, { name: equipmentName, code: equipmentName }, this, homebridgeAccessory);
           this.ecobeeAccessories[equipmentName] = equipment;
